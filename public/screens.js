@@ -17393,7 +17393,7 @@ function Boot() {
       </div>
     );
   }
-  return <App />;
+  return window.renderSentinelRoot ? window.renderSentinelRoot(App) : <App />;
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));

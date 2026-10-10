@@ -9,6 +9,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import nodemailer from "nodemailer";
 import { loadSymptomsForChat, localChatAssistant } from "./local-chat.js";
 import { initOnnxModel, runOnnxDiseaseModel, runDeepNeuralNetworkDiseaseModel, getOnnxModelStatus, getNeuralNetworkModelStatus } from "./ml-disease-model.js";
+import { sentinelRouter } from "./sentinel-api.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 loadSymptomsForChat();
@@ -26,6 +27,7 @@ const PORT = Number(process.env.PORT || 3000);
 
 app.use(cors());
 app.use(express.json({ limit: "12mb" }));
+app.use(sentinelRouter);
 
 const images = new Map();
 let nextImgId = 1;
@@ -5230,7 +5232,9 @@ app.post("/api/surveillance/paravet-report", (req, res) => {
   try {
     const {
       sakhi_name = "Pashu Sakhi Worker",
+      assistant_name,
       sakhi_id = "PS-MH-2026-441",
+      assistant_id,
       district = "Pune",
       block = "Baramati",
       village = "Malegaon Khurd",
@@ -5247,6 +5251,9 @@ app.post("/api/surveillance/paravet-report", (req, res) => {
       sample_specimen = "Skin Scab & Whole Blood (Cold-pack packed)",
       notes = "Door-to-door herd health surveillance completed. Quarantined symptomatic cattle to separate shed.",
     } = req.body || {};
+
+    const effectiveSakhiName = req.body?.sakhi_name || assistant_name || sakhi_name;
+    const effectiveSakhiId = req.body?.sakhi_id || assistant_id || sakhi_id;
 
     const reportId = nextSurvReportId++;
     const ticketId = `DAHD-SAKHI-2026-${reportId}`;
@@ -5272,7 +5279,7 @@ app.post("/api/surveillance/paravet-report", (req, res) => {
       ai_triage_score: triage.triage_score,
       urgency: triage.urgency_tier,
       reporter_type: "Para-Veterinary Worker / Pashu Sakhi",
-      reporter_name: `${sakhi_name} (ID: ${sakhi_id})`,
+      reporter_name: `${effectiveSakhiName} (ID: ${effectiveSakhiId})`,
       reporter_phone: "9421187654",
       reporter_email: "pashu.sakhi@mahapashu.gov.in",
       vaccination_status,
@@ -6155,15 +6162,15 @@ if (fs.existsSync(publicDir)) {
       setHeaders(res, filePath) {
         const base = path.basename(filePath);
         if (
-          base === "index.html" ||
-          base === "app.js" ||
-          base === "screens.js" ||
-          base === "styles.css" ||
-          base === "styles-premium.css" ||
-          base === "logo.png" ||
-          base === "splash-logo.png"
+          base.endsWith(".html") ||
+          base.endsWith(".js") ||
+          base.endsWith(".css") ||
+          base === "sw.js" ||
+          base === "manifest.json"
         ) {
-          res.setHeader("Cache-Control", "no-store");
+          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+          res.setHeader("Pragma", "no-cache");
+          res.setHeader("Expires", "0");
         }
       },
     })
