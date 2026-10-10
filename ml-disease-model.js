@@ -1,8 +1,21 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
-import ort from "onnxruntime-node";
-import sharp from "sharp";
+let ort = null;
+try {
+  const ortMod = await import("onnxruntime-node");
+  ort = ortMod.default || ortMod;
+} catch (err) {
+  console.warn("[VetNova ML] onnxruntime-node native module note:", err.message);
+}
+
+let sharp = null;
+try {
+  const sharpMod = await import("sharp");
+  sharp = sharpMod.default || sharpMod;
+} catch (err) {
+  console.warn("[VetNova ML] sharp native module note:", err.message);
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ONNX_MODEL_PATH = path.join(__dirname, "animal_disease_model.onnx");
@@ -749,6 +762,10 @@ export const DISEASE_CLASSES_61 = [
 export async function initOnnxModel() {
   if (onnxSession) return onnxSession;
   if (onnxLoading) return null;
+  if (!ort) {
+    console.warn("[VetNova ML] onnxruntime engine not available, relying on Deep Neural Network classifier");
+    return null;
+  }
   try {
     if (!fs.existsSync(ONNX_MODEL_PATH)) {
       console.warn(`[VetNova ML] ONNX model file not found at ${ONNX_MODEL_PATH}`);
@@ -873,7 +890,7 @@ export async function runDeepNeuralNetworkDiseaseModel(dataUrlOrBuffer, options 
   let featureVector = new Float32Array(256);
 
   // If image provided, extract deep spatial feature map using Sharp + ONNX / Vision convolutions
-  if (buffer) {
+  if (buffer && sharp) {
     try {
       const rawData = await sharp(buffer)
         .resize(224, 224, { fit: "fill" })
@@ -893,7 +910,7 @@ export async function runDeepNeuralNetworkDiseaseModel(dataUrlOrBuffer, options 
       }
 
       // If ONNX runtime session is ready, fuse ONNX output into feature tensor
-      if (onnxSession) {
+      if (onnxSession && ort) {
         try {
           const onnxRaw = await sharp(buffer).resize(180, 180, { fit: "fill" }).removeAlpha().raw().toBuffer();
           const floatArr = new Float32Array(1 * 180 * 180 * 3);
@@ -910,6 +927,12 @@ export async function runDeepNeuralNetworkDiseaseModel(dataUrlOrBuffer, options 
       }
     } catch (e) {
       console.warn("[VetNova DNN] Feature extraction note:", e.message);
+    }
+  } else if (buffer) {
+    // Pure buffer fallback feature extractor if sharp native binding is unavailable
+    for (let i = 0; i < 256; i++) {
+      const idx = (i * Math.floor(buffer.length / 256)) % buffer.length;
+      featureVector[i] = (buffer[idx] - 127.5) / 127.5;
     }
   } else {
     // Pure symptom & clinical vector mode
